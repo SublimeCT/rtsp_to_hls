@@ -1,0 +1,19 @@
+{
+  "name": "rtsp_to_hls",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "scripts": {
+    "test": "mocha test/index.js --timeout 10000 --reporter mochawesome"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^9.0.1",
+    "@types/node": "^14.0.10",
+    "chai": "^4.2.0",
+    "mocha": "^7.2.0",
+    "mochawesome": "^6.1.1"
+  },
+  "dependencies": {
+    "fs-extra": "^9.0.1"
+  }
+}

@@ -9,6 +9,7 @@ import { EventEmitter } from 'events';
  * const rc = new RtspConverter(url, 'ffmpeg', '/Users/xxx/rtsp_to_hls')
  * rc.run()
  * ```
+ * @description TODO 检测磁盘剩余空间
  */
 export declare class RtspConverter extends EventEmitter {
     /**
@@ -27,7 +28,9 @@ export declare class RtspConverter extends EventEmitter {
      */
     readonly outputDir: string;
     process?: child_process.ChildProcess;
+    printscreenProcess?: child_process.ChildProcess;
     execOptions: child_process.ExecOptions;
+    execScreenOptions: child_process.ExecOptions;
     /**
      * ffmpeg 命令的执行参数, 参数很复杂, `hls` 部分参数可参考 `ffmpeg -h muxer=hls`
      * @description 不包含 `ffmpeg -i 'rtsp://...'` 部分, 也不包含最终的 output 文件
@@ -38,12 +41,16 @@ export declare class RtspConverter extends EventEmitter {
      * @refer http://www.ruanyifeng.com/blog/2020/01/ffmpeg.html
      * @refer https://www.jianshu.com/p/98ff1c49f232
      * @refer https://www.jianshu.com/p/6f09f95f992b
-     * ffmpeg -i 'rtsp://admin:shengyun123@192.168.1.143:554/h264/ch34/main/av_stream' -hide_banner  -fflags  flush_packets  -vcodec  -flags  -hls_time 3 -hls_wrap 20 -hls_flags round_durations  -hls_flags delete_segments  -hls_list_size 10 -c copy -y   /Users/test/rtsp_to_hls/2/index.m3u8
-     * ffmpeg -i 'rtsp://admin:shengyun123@192.168.1.143:554/h264/ch34/main/av_stream' -hide_banner  -fflags  flush_packets  -vcodec -flags  -hls_time 3 -hls_wrap 20 -hls_flags delete_segments -hls_flags round_durations  -hls_list_size 10 -c copy  -y   /Users/test/rtsp_to_hls/0/index.m3u8
      */
     execParams: {
         [paramKey: string]: string | number;
     };
+    /**
+     * 获取视频流快照时的 ffmpeg 参数
+     * @example 若最终执行的命令为 ffmpeg -i 'rtsp://admin:shengyun123@192.168.1.143:554/h264/ch34/main/av_stream' -hide_banner  -vcodec png -vframes 1 -ss 0:0:0 -an /Users/test/rtsp_to_hls/2/s.png
+     * @example 则该属性为 -hide_banner -vcodec png -vframes 1 -ss 0:0:0 -an
+     */
+    printScreenParams: string;
     /**
      * 当前实例在 `RtspConverter.processList` 中的索引
      */
@@ -56,6 +63,10 @@ export declare class RtspConverter extends EventEmitter {
      * m3u8 文件保存路径
      */
     get saveM3u8Path(): string;
+    /**
+     * 视频流快照文件保存路径
+     */
+    get saveScreenshotPath(): string;
     /**
      * RtspConverter 线程集合
      * @description 在 `this.outputDir` 目录下, 每创建一个 `RtspConverter` 实例就会创建一个输出目录, 目录名以数组 `key` 作为名称
@@ -87,7 +98,9 @@ export declare class RtspConverter extends EventEmitter {
      * @param filePath string
      */
     static checkPath(filePath: string, checkParams?: string): boolean;
-    run(): Promise<unknown>;
+    download(): Promise<unknown>;
+    printscreen(): Promise<unknown>;
+    getPrintScreenCommand(): string;
     /**
      * 停止正在执行的 `ffmpeg` 进程
      */

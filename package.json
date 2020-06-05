@@ -4,7 +4,8 @@
   "main": "index.js",
   "license": "MIT",
   "scripts": {
-    "test": "mocha test/index.js --timeout 10000 --reporter mochawesome"
+    "test": "mocha test/index.js --timeout 15000 --reporter mochawesome",
+    "test:functions": "mocha test/functions.js --timeout 15000 --reporter mochawesome"
   },
   "devDependencies": {
     "@types/fs-extra": "^9.0.1",

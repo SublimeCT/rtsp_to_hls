@@ -4,6 +4,7 @@ import fs from 'fs'
 import fse from 'fs-extra'
 import path from 'path'
 import { EventEmitter } from 'events'
+import { ConfigOptions } from './config'
 
 /**
  * rtsp -> hls 转码程序
@@ -13,12 +14,18 @@ import { EventEmitter } from 'events'
  * const rc = new RtspConverter(url, 'ffmpeg', '/Users/xxx/rtsp_to_hls')
  * rc.run()
  * ```
+ * @description TODO 检测磁盘剩余空间
  */
 export class RtspConverter extends EventEmitter {
     process?: child_process.ChildProcess
+    printscreenProcess?: child_process.ChildProcess
     execOptions: child_process.ExecOptions = {
         timeout: 10000,
         maxBuffer: 1024 * 1024 * 1024, // 单位是 byte, 参考自 http://nodejs.cn/api/child_process.html#child_process_child_process_exec_command_options_callback
+        windowsHide: true,
+    }
+    execScreenOptions: child_process.ExecOptions = {
+        timeout: 10000,
         windowsHide: true,
     }
     /**
@@ -31,15 +38,13 @@ export class RtspConverter extends EventEmitter {
      * @refer http://www.ruanyifeng.com/blog/2020/01/ffmpeg.html
      * @refer https://www.jianshu.com/p/98ff1c49f232
      * @refer https://www.jianshu.com/p/6f09f95f992b
-     * ffmpeg -i 'rtsp://admin:shengyun123@192.168.1.143:554/h264/ch34/main/av_stream' -hide_banner  -fflags  flush_packets  -vcodec  -flags  -hls_time 3 -hls_wrap 20 -hls_flags round_durations  -hls_flags delete_segments  -hls_list_size 10 -c copy -y   /Users/test/rtsp_to_hls/2/index.m3u8
-     * ffmpeg -i 'rtsp://admin:shengyun123@192.168.1.143:554/h264/ch34/main/av_stream' -hide_banner  -fflags  flush_packets  -vcodec -flags  -hls_time 3 -hls_wrap 20 -hls_flags delete_segments -hls_flags round_durations  -hls_list_size 10 -c copy  -y   /Users/test/rtsp_to_hls/0/index.m3u8
      */
     execParams: { [paramKey: string]: string | number } = {
         '-hide_banner': '', // 好像没用 ...
         '-fflags flush_packets': '', // 立即将 packets 数据刷新入文件中, #refer https://www.jianshu.com/p/6f09f95f992b
         '-vcodec': '',
         '-flags': '', // 
-        '-hls_time': 3, // 每片 1s #refer https://www.jianshu.com/p/98ff1c49f232
+        '-hls_time': 1, // 每片 1s #refer https://www.jianshu.com/p/98ff1c49f232
         '-hls_wrap': 20, // 设置刷新回滚参数, 当TS分片序号等于3时回滚 #refer https://www.jianshu.com/p/98ff1c49f232
         '-hls_flags delete_segments': '', // 只保留设置的切片个数, 删除其他早期的切片 #refer https://www.jianshu.com/p/98ff1c49f232
         '-hls_flags round_durations': '', // 可以实现切片信息的duration时长为整形 #refer https://www.jianshu.com/p/98ff1c49f232
@@ -47,6 +52,12 @@ export class RtspConverter extends EventEmitter {
         '-c': 'copy', // 直接复制, 不经过重新编码 这样比较快? #refer http://www.ruanyifeng.com/blog/2020/01/ffmpeg.html
         '-y': '',
     }
+    /**
+     * 获取视频流快照时的 ffmpeg 参数
+     * @example 若最终执行的命令为 ffmpeg -i 'rtsp://admin:shengyun123@192.168.1.143:554/h264/ch34/main/av_stream' -hide_banner  -vcodec png -vframes 1 -ss 0:0:0 -an /Users/test/rtsp_to_hls/2/s.png
+     * @example 则该属性为 -hide_banner -vcodec png -vframes 1 -ss 0:0:0 -an
+     */
+    printScreenParams: string = '-hide_banner  -vcodec png -vframes 1 -ss 0:0:0 -an'
     /**
      * 当前实例在 `RtspConverter.processList` 中的索引
      */
@@ -63,7 +74,13 @@ export class RtspConverter extends EventEmitter {
      * m3u8 文件保存路径
      */
     get saveM3u8Path(): string {
-        return path.join(this.savePath, 'index.m3u8')
+        return path.join(this.savePath, ConfigOptions.M3U8_FILE_NAME)
+    }
+    /**
+     * 视频流快照文件保存路径
+     */
+    get saveScreenshotPath(): string {
+        return path.join(this.savePath, ConfigOptions.SCREENSHOT_NAME)
     }
     /**
      * RtspConverter 线程集合
@@ -129,19 +146,44 @@ export class RtspConverter extends EventEmitter {
                 }
                 Logger.debug(`stdout: ${stdout}`)
                 Logger.debug(`stderr: ${stderr}`)
-                resolve(stdout)
             })
             this.process.on('exit', (code, signal) => {
                 Logger.debug(`ffmpeg process event <exit>:\n\tcode: ${code}\n\tsignal: ${signal}`, 'process event')
+                resolve(this.saveM3u8Path)
                 this.emit('exit', code, signal)
             })
             this.process.on('error', err => {
                 Logger.debug(`ffmpeg process event <error>:\n\tcode: ${err}`, 'process event')
+                resolve(this.saveM3u8Path)
                 this.emit('error', err)
             })
         })
     }
-    async printscreen() {}
+    async printscreen() {
+        await this.beforeRun()
+        const command = this.getPrintScreenCommand()
+        return new Promise((resolve, reject) => {
+            this.printscreenProcess = child_process.exec(command, this.execScreenOptions, (err, stdout) => {
+                if (err) {
+                    Logger.error(`printscreen execute failed:\n\tcommand: ${command}\n\terr: ${err.message}`, LoggerCode.EXEC_FAILED, false)
+                    return
+                }
+            })
+            this.printscreenProcess.on('exit', (code, signal) => {
+                Logger.debug(`ffmpeg printscreen process event <exit>:\n\tcode: ${code}\n\tsignal: ${signal}`, 'process event')
+                resolve(this.saveScreenshotPath)
+                this.emit('exit', code, signal)
+            })
+            this.printscreenProcess.on('error', err => {
+                Logger.debug(`ffmpeg printscreen process event <error>:\n\tcode: ${err}`, 'process event')
+                reject(this.saveScreenshotPath)
+                this.emit('error', err)
+            })
+        })
+    }
+    getPrintScreenCommand(): string {
+        return `${this.ffmpegPath} -i '${this.url}' ${this.printScreenParams} ${this.saveScreenshotPath}`
+    }
     /**
      * 停止正在执行的 `ffmpeg` 进程
      */
@@ -153,7 +195,7 @@ export class RtspConverter extends EventEmitter {
     async beforeRun() {
         // 将当前实例存入 process list
         RtspConverter.processList.push(this)
-        console.log('\n>>>>>>>>> 当前程序所处位置\n', RtspConverter.processList.length, this.index)
+        Logger.debug(`\n\t当前程序所处位置: ${this.index}/${RtspConverter.processList.length}\n`)
         // 确保 m3u8 文件保存目录存在且是空目录
         Logger.debug(`remove ${this.savePath} directory if exists`, 'before run')
         await fse.remove(this.savePath)

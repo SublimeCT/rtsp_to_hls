@@ -1,7 +1,7 @@
 {
   "name": "rtsp_to_hls",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "./build/main.js",
   "license": "MIT",
   "scripts": {
     "test": "mocha test/index.js --timeout 15000 --reporter mochawesome",

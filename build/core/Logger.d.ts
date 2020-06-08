@@ -1,6 +1,6 @@
 export declare enum LoggerTag {
     INFO = "\uD83D\uDCAC",
-    DEBUG = "\uD83C\uDFAC",
+    DEBUG = "\uD83C\uDFB2",
     WARNING = "\u26A0\uFE0F",
     ERROR = "\u274C"
 }

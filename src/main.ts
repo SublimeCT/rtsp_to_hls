@@ -29,6 +29,10 @@ export class RtspConverter extends EventEmitter {
         windowsHide: true,
     }
     /**
+     * 当前视频
+     */
+    isActive: boolean = true
+    /**
      * ffmpeg 命令的执行参数, 参数很复杂, `hls` 部分参数可参考 `ffmpeg -h muxer=hls`
      * @description 不包含 `ffmpeg -i 'rtsp://...'` 部分, 也不包含最终的 output 文件
      * @description 若最终执行的命名为 `ffmpeg -i 'rtsp://...' -fflags flush_packets -max_delay 1 -an -flags -global_header -hls_time 1 -vcodec copy -y ./index.m3u8`
@@ -39,16 +43,18 @@ export class RtspConverter extends EventEmitter {
      * @refer https://www.jianshu.com/p/98ff1c49f232
      * @refer https://www.jianshu.com/p/6f09f95f992b
      */
-    execParams: { [paramKey: string]: string | number } = {
+    execParams: { [paramKey: string]: string | string[] } = {
         '-hide_banner': '', // 好像没用 ...
-        '-fflags flush_packets': '', // 立即将 packets 数据刷新入文件中, #refer https://www.jianshu.com/p/6f09f95f992b
+        '-fflags': 'flush_packets', // 立即将 packets 数据刷新入文件中, #refer https://www.jianshu.com/p/6f09f95f992b
         '-vcodec': '',
-        '-flags': '', // 
-        '-hls_time': 1, // 每片 1s #refer https://www.jianshu.com/p/98ff1c49f232
-        '-hls_wrap': 20, // 设置刷新回滚参数, 当TS分片序号等于3时回滚 #refer https://www.jianshu.com/p/98ff1c49f232
-        '-hls_flags delete_segments': '', // 只保留设置的切片个数, 删除其他早期的切片 #refer https://www.jianshu.com/p/98ff1c49f232
-        '-hls_flags round_durations': '', // 可以实现切片信息的duration时长为整形 #refer https://www.jianshu.com/p/98ff1c49f232
-        '-hls_list_size': 10, // m3u8 ts list size #refer https://www.jianshu.com/p/98ff1c49f232
+        '-flags': '',
+        '-hls_time': '1', // 每片 1s #refer https://www.jianshu.com/p/98ff1c49f232
+        '-hls_wrap': '20', // 设置刷新回滚参数, 当TS分片序号等于 20 时回滚 #refer https://www.jianshu.com/p/98ff1c49f232
+        '-hls_flags': [
+            '-hls_flags', 'delete_segments', // 只保留设置的切片个数, 删除其他早期的切片 #refer https://www.jianshu.com/p/98ff1c49f232
+            '-hls_flags', 'round_durations' // 可以实现切片信息的duration时长为整形 #refer https://www.jianshu.com/p/98ff1c49f232
+        ],
+        '-hls_list_size': '10', // m3u8 ts list size #refer https://www.jianshu.com/p/98ff1c49f232
         '-c': 'copy', // 直接复制, 不经过重新编码 这样比较快? #refer http://www.ruanyifeng.com/blog/2020/01/ffmpeg.html
         '-y': '',
     }
@@ -57,7 +63,19 @@ export class RtspConverter extends EventEmitter {
      * @example 若最终执行的命令为 ffmpeg -i 'rtsp://admin:shengyun123@192.168.1.143:554/h264/ch34/main/av_stream' -hide_banner  -vcodec png -vframes 1 -ss 0:0:0 -an /Users/test/rtsp_to_hls/2/s.png
      * @example 则该属性为 -hide_banner -vcodec png -vframes 1 -ss 0:0:0 -an
      */
-    printScreenParams: string = '-hide_banner  -vcodec png -vframes 1 -ss 0:0:0 -an'
+    printScreenParams: string[] = ['-hide_banner', '-vcodec', 'png', '-vframes', '1', '-ss', '0:0:0', '-an']
+    /**
+     * 执行开始时间
+     */
+    startTime: number = 0
+    /**
+     * 连接成功时间
+     */
+    connectionTime: number = 0
+    /**
+     * 执行结束时间
+     */
+    endTime: number = 0
     /**
      * 当前实例在 `RtspConverter.processList` 中的索引
      */
@@ -136,56 +154,131 @@ export class RtspConverter extends EventEmitter {
     async download() {
         await this.beforeRun()
         const command = this.getCommand()
-        Logger.debug(`\ncommand: ${command}\n`)
         return new Promise(resolve => {
-            this.process = child_process.exec(command, this.execOptions, (err, stdout, stderr) => {
-                // ffmpeg 执行失败
-                if (err) {
-                    Logger.error(`command execute failed:\n\tcommand: ${command}\n\terr: ${err.message}\n`, LoggerCode.EXEC_FAILED, false)
-                    return
-                }
-                Logger.debug(`stdout: ${stdout}`)
-                Logger.debug(`stderr: ${stderr}`)
+            // 参考 http://nodejs.cn/api/child_process.html#child_process_child_process_spawn_command_args_options
+            Logger.debug(`\ncommand: \n\t${this.ffmpegPath + ' ' + command.join(' ')}\n\texecOptions:\n\t${JSON.stringify(this.execOptions)}`)
+            this.process = child_process.spawn(this.ffmpegPath, command, this.execOptions)
+            this.startTime = Date.now() // 记录开始时间用于统计
+            this.process.on('error', err => {
+                Logger.debug(`ffmpeg process event <error>:\n\tcode: ${err}`, 'process event')
+                resolve(this.saveM3u8Path)
+                this.emit('error', err)
             })
             this.process.on('exit', (code, signal) => {
                 Logger.debug(`ffmpeg process event <exit>:\n\tcode: ${code}\n\tsignal: ${signal}`, 'process event')
                 resolve(this.saveM3u8Path)
                 this.emit('exit', code, signal)
             })
-            this.process.on('error', err => {
-                Logger.debug(`ffmpeg process event <error>:\n\tcode: ${err}`, 'process event')
+            this.process.stderr?.on('data', data => {
+                Logger.debug(`ffmpeg process event <stderr><data>:\n\tdata: ${data}`, 'process event<stderr>')
+                // resolve(this.saveM3u8Path)
+                this.emit('stderr', data)
+                // 若已生成 m3u8 文件则触发 m3u8 文件已生成事件
+                this.emitSavedEvent(data)
+                // 若已连接成功则触发 connection 事件
+                this.emitConnectedEvent(data)
+            })
+            Logger.debug('是否有 stdout ? ' + !!this.process.stdout)
+            this.process.stdout?.on('data', data => {
+                Logger.debug(`ffmpeg process event <stdout><data>:\n\tdata: ${data}`, 'process event<stdout>')
                 resolve(this.saveM3u8Path)
-                this.emit('error', err)
+                this.emit('stdout', data)
+                // 触发 m3u8 文件已生成事件
+                this.emitSavedEvent(data)
+                // 若已连接成功则触发 connection 事件
+                this.emitConnectedEvent(data)
             })
         })
     }
+    emitSavedEvent(data: string) {
+        const existsM3u8File = this.m3u8FileExistsInStdout(data)
+        if (existsM3u8File) {
+            this.endTime = Date.now()
+            Logger.info(`exists m3u8 file, ${this.endTime - this.startTime}ms`, 'timer')
+            this.emit('existsM3u8')
+        }
+    }
+    emitConnectedEvent(data: string) {
+        const connected = this.isConnectedInStdout(data)
+        if (connected) {
+            this.connectionTime = Date.now()
+            Logger.info(`connected NVR device, ${this.connectionTime - this.startTime}ms`, 'timer')
+            this.emit('connected')
+        }
+    }
+    isConnectedInStdout(data: string): boolean {
+        return data.indexOf(this.url) !== -1
+    }
+    m3u8FileExistsInStdout(data: string): boolean {
+        return data.indexOf('index1.ts') !== -1 && data.indexOf('for writing') !== -1
+        // return data.indexOf(this.saveM3u8Path) !== -1
+    }
+    // async loopCheckFileExists(filePath: string, times: number = 200, timeout: number = 123) {
+    //     for (let t = times; t--;) {
+    //         await this._fileExists(filePath)
+    //     }
+    // }
+    // private _fileExists(filePath: string): Promise<boolean> {
+    //     return new Promise(resolve => {
+
+    //     })
+    // }
     async printscreen() {
         await this.beforeRun()
         const command = this.getPrintScreenCommand()
         return new Promise((resolve, reject) => {
-            this.printscreenProcess = child_process.exec(command, this.execScreenOptions, (err, stdout) => {
-                if (err) {
-                    Logger.error(`printscreen execute failed:\n\tcommand: ${command}\n\terr: ${err.message}`, LoggerCode.EXEC_FAILED, false)
-                    return
-                }
+            // 参考 http://nodejs.cn/api/child_process.html#child_process_child_process_spawn_command_args_options
+            Logger.debug(`\ncommand: \n\t${this.ffmpegPath + ' ' + command.join(' ')}\n\texecOptions:\n\t${JSON.stringify(this.execScreenOptions)}`)
+            this.startTime = Date.now() // 记录开始时间用于统计
+            this.printscreenProcess = child_process.spawn(this.ffmpegPath, command, this.execScreenOptions)
+            this.printscreenProcess.on('error', err => {
+                Logger.debug(`ffmpeg process (printscreen) event <error>:\n\tcode: ${err}`, 'process event')
+                this.emit('printscreen error', err)
+                resolve(this.saveScreenshotPath)
             })
             this.printscreenProcess.on('exit', (code, signal) => {
-                Logger.debug(`ffmpeg printscreen process event <exit>:\n\tcode: ${code}\n\tsignal: ${signal}`, 'process event')
+                Logger.debug(`ffmpeg process (printscreen) event <exit>:\n\tcode: ${code}\n\tsignal: ${signal}`, 'process event')
+                this.endTime = Date.now()
+                Logger.info(`generated printscreen file, ${this.endTime - this.startTime}ms`, 'timer')
+                this.emit('printscreen exit', code, signal)
                 resolve(this.saveScreenshotPath)
-                this.emit('exit', code, signal)
             })
-            this.printscreenProcess.on('error', err => {
-                Logger.debug(`ffmpeg printscreen process event <error>:\n\tcode: ${err}`, 'process event')
-                reject(this.saveScreenshotPath)
-                this.emit('error', err)
+            this.printscreenProcess.stderr?.on('data', data => {
+                Logger.debug(`ffmpeg process (printscreen) event <stderr><data>:\n\tdata: ${data}`, 'process event<stderr>')
+                this.emit('printscreen stderr', data)
+                // 若已连接成功则触发 connection 事件
+                this.emitConnectedEvent(data)
             })
+            this.printscreenProcess.stdout?.on('data', data => {
+                Logger.debug(`ffmpeg process (printscreen) event <stdout><data>:\n\tdata: ${data}`, 'process event<stdout>')
+                this.emit('printscreen stdout', data)
+                // 若已连接成功则触发 connection 事件
+                this.emitConnectedEvent(data)
+            })
+            // this.printscreenProcess = child_process.exec(command, this.execScreenOptions, (err, stdout) => {
+            //     if (err) {
+            //         Logger.error(`printscreen execute failed:\n\tcommand: ${command}\n\terr: ${err.message}`, LoggerCode.EXEC_FAILED, false)
+            //         return
+            //     }
+            // })
+            // this.printscreenProcess.on('exit', (code, signal) => {
+            //     Logger.debug(`ffmpeg printscreen process event <exit>:\n\tcode: ${code}\n\tsignal: ${signal}`, 'process event')
+            //     resolve(this.saveScreenshotPath)
+            //     this.emit('exit', code, signal)
+            // })
+            // this.printscreenProcess.on('error', err => {
+            //     Logger.debug(`ffmpeg printscreen process event <error>:\n\tcode: ${err}`, 'process event')
+            //     reject(this.saveScreenshotPath)
+            //     this.emit('error', err)
+            // })
         })
     }
-    getPrintScreenCommand(): string {
-        return `${this.ffmpegPath} -i '${this.url}' ${this.printScreenParams} ${this.saveScreenshotPath}`
+    getPrintScreenCommand(): string[] {
+        return ['-i', this.url, ...this.printScreenParams, this.saveScreenshotPath]
     }
     /**
      * 停止正在执行的 `ffmpeg` 进程
+     * @description ⚠️ 当不需要显示视频时应该及时 kill ffmpeg 进程
      */
     kill(): boolean {
         if (!this.process || this.process.killed) return false
@@ -202,14 +295,19 @@ export class RtspConverter extends EventEmitter {
         Logger.debug(`create ${this.savePath} directory if not exists`, 'before run')
         await fse.ensureDir(this.savePath)
     }
-    getCommand(): string {
+    getCommand(): string[] {
         const execParams = this.getExecParams()
-        return `${this.ffmpegPath} -i '${this.url}' ${execParams} ${this.saveM3u8Path}`
+        return ['-i', this.url, ...execParams, this.saveM3u8Path]
     }
-    getExecParams(): string {
-        let params = ''
+    getExecParams(): string[] {
+        let params = []
         for (const key in this.execParams) {
-            params += `${key} ${this.execParams[key]} `
+            if (Array.isArray(this.execParams[key])) {
+                params.push(...this.execParams[key])
+            } else {
+                params.push(key)
+                if (this.execParams[key]) params.push(this.execParams[key].toString())
+            }
         }
         return params
     }

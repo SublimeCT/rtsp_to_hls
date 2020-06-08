@@ -2,7 +2,7 @@ import { ConfigOptions } from '../config'
 
 export enum LoggerTag {
     INFO = '💬',
-    DEBUG = '🎬',
+    DEBUG = '🎲',
     WARNING = '⚠️',
     ERROR = '❌',
 }

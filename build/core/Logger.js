@@ -5,7 +5,7 @@ const config_1 = require("../config");
 var LoggerTag;
 (function (LoggerTag) {
     LoggerTag["INFO"] = "\uD83D\uDCAC";
-    LoggerTag["DEBUG"] = "\uD83C\uDFAC";
+    LoggerTag["DEBUG"] = "\uD83C\uDFB2";
     LoggerTag["WARNING"] = "\u26A0\uFE0F";
     LoggerTag["ERROR"] = "\u274C";
 })(LoggerTag = exports.LoggerTag || (exports.LoggerTag = {}));

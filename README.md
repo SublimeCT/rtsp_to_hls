@@ -6,7 +6,13 @@
 import { RtspConverter } from 'rtsp_to_hls'
 
 const rc = new RtspConverter(url, ffmpegPath, outputDir)
-rc.run()
+rc.download()
+rc.printscreen()
+
+rc.on('error', err => handleErr(err))
+
+// 在退出播放时必须要停掉 ffmpeg 进程, 否则 ...
+rc.kill()
 ```
 
 ## test

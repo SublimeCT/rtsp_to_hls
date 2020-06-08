@@ -32,6 +32,10 @@ export declare class RtspConverter extends EventEmitter {
     execOptions: child_process.ExecOptions;
     execScreenOptions: child_process.ExecOptions;
     /**
+     * 当前视频
+     */
+    isActive: boolean;
+    /**
      * ffmpeg 命令的执行参数, 参数很复杂, `hls` 部分参数可参考 `ffmpeg -h muxer=hls`
      * @description 不包含 `ffmpeg -i 'rtsp://...'` 部分, 也不包含最终的 output 文件
      * @description 若最终执行的命名为 `ffmpeg -i 'rtsp://...' -fflags flush_packets -max_delay 1 -an -flags -global_header -hls_time 1 -vcodec copy -y ./index.m3u8`
@@ -43,14 +47,26 @@ export declare class RtspConverter extends EventEmitter {
      * @refer https://www.jianshu.com/p/6f09f95f992b
      */
     execParams: {
-        [paramKey: string]: string | number;
+        [paramKey: string]: string | string[];
     };
     /**
      * 获取视频流快照时的 ffmpeg 参数
      * @example 若最终执行的命令为 ffmpeg -i 'rtsp://admin:shengyun123@192.168.1.143:554/h264/ch34/main/av_stream' -hide_banner  -vcodec png -vframes 1 -ss 0:0:0 -an /Users/test/rtsp_to_hls/2/s.png
      * @example 则该属性为 -hide_banner -vcodec png -vframes 1 -ss 0:0:0 -an
      */
-    printScreenParams: string;
+    printScreenParams: string[];
+    /**
+     * 执行开始时间
+     */
+    startTime: number;
+    /**
+     * 连接成功时间
+     */
+    connectionTime: number;
+    /**
+     * 执行结束时间
+     */
+    endTime: number;
     /**
      * 当前实例在 `RtspConverter.processList` 中的索引
      */
@@ -99,13 +115,18 @@ export declare class RtspConverter extends EventEmitter {
      */
     static checkPath(filePath: string, checkParams?: string): boolean;
     download(): Promise<unknown>;
+    emitSavedEvent(data: string): void;
+    emitConnectedEvent(data: string): void;
+    isConnectedInStdout(data: string): boolean;
+    m3u8FileExistsInStdout(data: string): boolean;
     printscreen(): Promise<unknown>;
-    getPrintScreenCommand(): string;
+    getPrintScreenCommand(): string[];
     /**
      * 停止正在执行的 `ffmpeg` 进程
+     * @description ⚠️ 当不需要显示视频时应该及时 kill ffmpeg 进程
      */
     kill(): boolean;
     beforeRun(): Promise<void>;
-    getCommand(): string;
-    getExecParams(): string;
+    getCommand(): string[];
+    getExecParams(): string[];
 }

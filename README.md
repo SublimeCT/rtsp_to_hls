@@ -5,11 +5,25 @@
 ```javascript
 import { RtspConverter } from 'rtsp_to_hls'
 
-const rc = new RtspConverter(url, ffmpegPath, outputDir)
-rc.download()
-rc.printscreen()
+// 首先应确保 `ffmpegPath` 和 `outputDir` 存在
+const encoder = 'libxh264' // 设置生成的 hls 流的编码格式, 不传或传空为不转码
+const rc = new RtspConverter(url, ffmpegPath, outputDir, encoder)
 
-rc.on('error', err => handleErr(err))
+// 监听事件
+rc.on('error', handleRCError)
+rc.on('stderr', handleRCError)
+rc.on('connected', handleRCConnected)
+rc.on('existsM3u8', () => {
+    // 此时已经生成了 m3u8 文件
+    console.log(rc.saveM3u8Path)
+    // 使用 `file` 协议播放 `.m3u8` 文件
+    this.videoSrc = `file://${rc.saveM3u8Path}`
+})
+
+// 开始生成 ts 文件
+rc.download()
+// 开始截图
+// rc.printscreen()
 
 // 在退出播放时必须要停掉 ffmpeg 进程, 否则 ...
 rc.kill()

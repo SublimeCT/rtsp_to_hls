@@ -88,7 +88,9 @@ let RtspConverter = /** @class */ (() => {
                     '-hls_flags', 'round_durations' // 可以实现切片信息的duration时长为整形 #refer https://www.jianshu.com/p/98ff1c49f232
                 ],
                 '-hls_list_size': '10',
-                '-c': 'copy',
+                '-c:v': 'libx264',
+                // '-bsf:v': 'h264_mp4toannexb', // 转换为常见于实时传输流的H.264 AnnexB标准的编码
+                // '-c': 'copy', // 直接复制, 不经过重新编码 这样比较快? #refer http://www.ruanyifeng.com/blog/2020/01/ffmpeg.html
                 '-y': '',
             };
             /**
@@ -145,8 +147,17 @@ let RtspConverter = /** @class */ (() => {
         static findProcessIndex(rc) {
             return RtspConverter.processList.findIndex(p => p === rc);
         }
+        // /**
+        //  * 下载 ffmpeg 二进制包到本地
+        //  * @param ffmpegPath 保存路径
+        //  */
+        // static downloadFfmpeg(ffmpegPath: string, downloadURL?: string) {
+        //     if (!RtspConverter.checkPath(ffmpegPath)) Logger.error('download path invalid', LoggerCode.PATH_WRONG)
+        //     const url = downloadURL || RtspConverter.ffmpegDownloadURL[os.platform()]
+        // }
         /**
          * 检测传入的路径是否正确(仅检测该文件的可访问性)
+         * @description 检测文件无需传入 checkParams, 检测命令时需要传入 `checkParams`
          * @param filePath string
          */
         static checkPath(filePath, checkParams) {
@@ -219,7 +230,7 @@ let RtspConverter = /** @class */ (() => {
             const connected = this.isConnectedInStdout(data);
             if (connected) {
                 this.connectionTime = Date.now();
-                Logger_1.Logger.info(`connected NVR device, ${this.connectionTime - this.startTime}ms`, 'timer');
+                Logger_1.Logger.info(`camera device is connected, ${this.connectionTime - this.startTime}ms`, 'timer');
                 this.emit('connected');
             }
         }
@@ -336,6 +347,13 @@ let RtspConverter = /** @class */ (() => {
             return params;
         }
     }
+    /**
+     * 不同平台下的 ffmpeg 二进制包下载地址
+     */
+    RtspConverter.ffmpegDownloadURL = {
+        win32: 'https://ffmpeg.zeranoe.com/builds/win32/static/ffmpeg-4.3.1-win32-static.zip',
+        darwin: 'https://ffmpeg.zeranoe.com/builds/macos64/static/ffmpeg-4.3.1-macos64-static.zip'
+    };
     /**
      * RtspConverter 线程集合
      * @description 在 `this.outputDir` 目录下, 每创建一个 `RtspConverter` 实例就会创建一个输出目录, 目录名以数组 `key` 作为名称

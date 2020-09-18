@@ -4,7 +4,7 @@ import fs from 'fs'
 import fse from 'fs-extra'
 import path from 'path'
 import { EventEmitter } from 'events'
-import { ConfigOptions } from './config'
+import { ConfigOptions, Encoders } from './config'
 
 /**
  * rtsp -> hls 转码程序
@@ -55,7 +55,9 @@ export class RtspConverter extends EventEmitter {
             '-hls_flags', 'round_durations' // 可以实现切片信息的duration时长为整形 #refer https://www.jianshu.com/p/98ff1c49f232
         ],
         '-hls_list_size': '10', // m3u8 ts list size #refer https://www.jianshu.com/p/98ff1c49f232
-        '-c': 'copy', // 直接复制, 不经过重新编码 这样比较快? #refer http://www.ruanyifeng.com/blog/2020/01/ffmpeg.html
+        // '-c:v': 'libx264', // 将视频流编码为 h.264 格式(在获取实际执行的参数时如果指定了 `this.encoder`, 则会使用该参数, 否则会删除该参数) #refer https://www.jianshu.com/p/98ff1c49f232
+        // '-bsf:v': 'h264_mp4toannexb', // 转换为常见于实时传输流的H.264 AnnexB标准的编码
+        // '-c': 'copy', // 直接复制(在获取实际执行的参数时如果指定了 `this.encoder`, 则会删除该参数), 不经过重新编码 这样比较快? #refer http://www.ruanyifeng.com/blog/2020/01/ffmpeg.html
         '-y': '',
     }
     /**
@@ -101,6 +103,13 @@ export class RtspConverter extends EventEmitter {
         return path.join(this.savePath, ConfigOptions.SCREENSHOT_NAME)
     }
     /**
+     * 不同平台下的 ffmpeg 二进制包下载地址
+     */
+    static ffmpegDownloadURL: { [platform in NodeJS.Platform]?: string } = {
+        win32: 'https://ffmpeg.zeranoe.com/builds/win32/static/ffmpeg-4.3.1-win32-static.zip',
+        darwin: 'https://ffmpeg.zeranoe.com/builds/macos64/static/ffmpeg-4.3.1-macos64-static.zip'
+    }
+    /**
      * RtspConverter 线程集合
      * @description 在 `this.outputDir` 目录下, 每创建一个 `RtspConverter` 实例就会创建一个输出目录, 目录名以数组 `key` 作为名称
      */
@@ -128,13 +137,34 @@ export class RtspConverter extends EventEmitter {
          * @example '/Users/xxx/rtsp_output'
          */
         readonly outputDir: string,
+        /**
+         * 生成的 hls 流文件编码格式
+         * @description 若传空则使用 `-c copy` 即不进行再编码(默认)
+         * @description 应用场景: 视频源是 `h265`, 需要转为 `h264` 提供给浏览器播放
+         */
+        readonly encoders?: Encoders,
     ) {
         super()
         if (!RtspConverter.checkPath(ffmpegPath, '-version')) Logger.error('ffmpeg command path invalid', LoggerCode.EXEC_PATH_WRONG)
         if (!RtspConverter.checkPath(outputDir)) Logger.error('output path invalid', LoggerCode.PATH_WRONG)
+        // 设置编码格式
+        if (this.encoders) {
+            this.execParams['-c:v'] = this.encoders
+        } else {
+            this.execParams['-c'] = 'copy'
+        }
     }
+    // /**
+    //  * 下载 ffmpeg 二进制包到本地
+    //  * @param ffmpegPath 保存路径
+    //  */
+    // static downloadFfmpeg(ffmpegPath: string, downloadURL?: string) {
+    //     if (!RtspConverter.checkPath(ffmpegPath)) Logger.error('download path invalid', LoggerCode.PATH_WRONG)
+    //     const url = downloadURL || RtspConverter.ffmpegDownloadURL[os.platform()]
+    // }
     /**
      * 检测传入的路径是否正确(仅检测该文件的可访问性)
+     * @description 检测文件无需传入 checkParams, 检测命令时需要传入 `checkParams`
      * @param filePath string
      */
     static checkPath(filePath: string, checkParams?: string): boolean {
@@ -202,7 +232,7 @@ export class RtspConverter extends EventEmitter {
         const connected = this.isConnectedInStdout(data)
         if (connected) {
             this.connectionTime = Date.now()
-            Logger.info(`connected NVR device, ${this.connectionTime - this.startTime}ms`, 'timer')
+            Logger.info(`camera device is connected, ${this.connectionTime - this.startTime}ms`, 'timer')
             this.emit('connected')
         }
     }

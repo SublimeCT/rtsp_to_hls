@@ -84,6 +84,12 @@ export declare class RtspConverter extends EventEmitter {
      */
     get saveScreenshotPath(): string;
     /**
+     * 不同平台下的 ffmpeg 二进制包下载地址
+     */
+    static ffmpegDownloadURL: {
+        [platform in NodeJS.Platform]?: string;
+    };
+    /**
      * RtspConverter 线程集合
      * @description 在 `this.outputDir` 目录下, 每创建一个 `RtspConverter` 实例就会创建一个输出目录, 目录名以数组 `key` 作为名称
      */
@@ -111,6 +117,7 @@ export declare class RtspConverter extends EventEmitter {
     outputDir: string);
     /**
      * 检测传入的路径是否正确(仅检测该文件的可访问性)
+     * @description 检测文件无需传入 checkParams, 检测命令时需要传入 `checkParams`
      * @param filePath string
      */
     static checkPath(filePath: string, checkParams?: string): boolean;

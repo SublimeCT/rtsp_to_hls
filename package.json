@@ -2,6 +2,7 @@
   "name": "rtsp_to_hls",
   "version": "1.1.0",
   "main": "./build/main.js",
+  "author": "SublimeCT",
   "license": "MIT",
   "scripts": {
     "test": "mocha test/index.js --timeout 15000 --reporter mochawesome",
@@ -13,6 +14,13 @@
     "chai": "^4.2.0",
     "mocha": "^7.2.0",
     "mochawesome": "^6.1.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SublimeCT/rtsp_to_hls.git"
+  },
+  "bugs": {
+    "url": "https://github.com/SublimeCT/rtsp_to_hls/issues"
   },
   "dependencies": {
     "fs-extra": "^9.0.1"

@@ -102,7 +102,7 @@ let RtspConverter = /** @class */ (() => {
             };
             /**
              * 获取视频流快照时的 ffmpeg 参数
-             * @example 若最终执行的命令为 ffmpeg -i 'rtsp://admin:shengyun123@192.168.1.143:554/h264/ch34/main/av_stream' -hide_banner  -vcodec png -vframes 1 -ss 0:0:0 -an /Users/test/rtsp_to_hls/2/s.png
+             * @example 若最终执行的命令为 ffmpeg -i 'rtsp://username:xxxxx@192.168.1.143:554/h264/ch34/main/av_stream' -hide_banner  -vcodec png -vframes 1 -ss 0:0:0 -an /Users/test/rtsp_to_hls/2/s.png
              * @example 则该属性为 -hide_banner -vcodec png -vframes 1 -ss 0:0:0 -an
              */
             this.printScreenParams = ['-hide_banner', '-vcodec', 'png', '-vframes', '1', '-ss', '0:0:0', '-an'];

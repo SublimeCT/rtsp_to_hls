@@ -27,6 +27,12 @@ export declare class RtspConverter extends EventEmitter {
      * @example '/Users/xxx/rtsp_output'
      */
     readonly outputDir: string;
+    /**
+     * 生成的 hls 流文件编码格式
+     * @description 若传空则使用 `-c copy` 即不进行再编码(默认)
+     * @description 应用场景: 视频源是 `h265`, 需要转为 `h264` 提供给浏览器播放
+     */
+    readonly encoders?: "libx264" | "NVENC" | "libx265" | "libvpx" | "libaom" | undefined;
     process?: child_process.ChildProcess;
     printscreenProcess?: child_process.ChildProcess;
     execOptions: child_process.ExecOptions;
@@ -114,7 +120,13 @@ export declare class RtspConverter extends EventEmitter {
      * m3u8 / ts 文件输出路径
      * @example '/Users/xxx/rtsp_output'
      */
-    outputDir: string);
+    outputDir: string, 
+    /**
+     * 生成的 hls 流文件编码格式
+     * @description 若传空则使用 `-c copy` 即不进行再编码(默认)
+     * @description 应用场景: 视频源是 `h265`, 需要转为 `h264` 提供给浏览器播放
+     */
+    encoders?: "libx264" | "NVENC" | "libx265" | "libvpx" | "libaom" | undefined);
     /**
      * 检测传入的路径是否正确(仅检测该文件的可访问性)
      * @description 检测文件无需传入 checkParams, 检测命令时需要传入 `checkParams`

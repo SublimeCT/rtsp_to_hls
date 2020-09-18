@@ -47,11 +47,18 @@ let RtspConverter = /** @class */ (() => {
          * m3u8 / ts 文件输出路径
          * @example '/Users/xxx/rtsp_output'
          */
-        outputDir) {
+        outputDir, 
+        /**
+         * 生成的 hls 流文件编码格式
+         * @description 若传空则使用 `-c copy` 即不进行再编码(默认)
+         * @description 应用场景: 视频源是 `h265`, 需要转为 `h264` 提供给浏览器播放
+         */
+        encoders) {
             super();
             this.url = url;
             this.ffmpegPath = ffmpegPath;
             this.outputDir = outputDir;
+            this.encoders = encoders;
             this.execOptions = {
                 timeout: 10000,
                 maxBuffer: 1024 * 1024 * 1024,
@@ -88,9 +95,9 @@ let RtspConverter = /** @class */ (() => {
                     '-hls_flags', 'round_durations' // 可以实现切片信息的duration时长为整形 #refer https://www.jianshu.com/p/98ff1c49f232
                 ],
                 '-hls_list_size': '10',
-                '-c:v': 'libx264',
+                // '-c:v': 'libx264', // 将视频流编码为 h.264 格式(在获取实际执行的参数时如果指定了 `this.encoder`, 则会使用该参数, 否则会删除该参数) #refer https://www.jianshu.com/p/98ff1c49f232
                 // '-bsf:v': 'h264_mp4toannexb', // 转换为常见于实时传输流的H.264 AnnexB标准的编码
-                // '-c': 'copy', // 直接复制, 不经过重新编码 这样比较快? #refer http://www.ruanyifeng.com/blog/2020/01/ffmpeg.html
+                // '-c': 'copy', // 直接复制(在获取实际执行的参数时如果指定了 `this.encoder`, 则会删除该参数), 不经过重新编码 这样比较快? #refer http://www.ruanyifeng.com/blog/2020/01/ffmpeg.html
                 '-y': '',
             };
             /**
@@ -115,6 +122,13 @@ let RtspConverter = /** @class */ (() => {
                 Logger_1.Logger.error('ffmpeg command path invalid', Logger_1.LoggerCode.EXEC_PATH_WRONG);
             if (!RtspConverter.checkPath(outputDir))
                 Logger_1.Logger.error('output path invalid', Logger_1.LoggerCode.PATH_WRONG);
+            // 设置编码格式
+            if (this.encoders) {
+                this.execParams['-c:v'] = this.encoders;
+            }
+            else {
+                this.execParams['-c'] = 'copy';
+            }
         }
         /**
          * 当前实例在 `RtspConverter.processList` 中的索引

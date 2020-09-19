@@ -2,9 +2,9 @@ import child_process from 'child_process'
 import { Logger, LoggerCode } from './core/Logger'
 import fs from 'fs'
 import fse from 'fs-extra'
-import path from 'path'
+import path, { resolve } from 'path'
 import { EventEmitter } from 'events'
-import { ConfigOptions, Encoders } from './config'
+import { ConfigOptions, Encoders, VideoMetaInfo } from './config'
 
 /**
  * rtsp -> hls 转码程序
@@ -19,6 +19,7 @@ import { ConfigOptions, Encoders } from './config'
 export class RtspConverter extends EventEmitter {
     process?: child_process.ChildProcess
     printscreenProcess?: child_process.ChildProcess
+    getVideoEncoderProcess?: child_process.ChildProcess
     execOptions: child_process.ExecOptions = {
         timeout: 10000,
         maxBuffer: 1024 * 1024 * 1024, // 单位是 byte, 参考自 http://nodejs.cn/api/child_process.html#child_process_child_process_exec_command_options_callback
@@ -110,6 +111,10 @@ export class RtspConverter extends EventEmitter {
         darwin: 'https://ffmpeg.zeranoe.com/builds/macos64/static/ffmpeg-4.3.1-macos64-static.zip'
     }
     /**
+     * 解析的视频元信息
+     */
+    static videoMetaInfos: {[url: string]: VideoMetaInfo} = {}
+    /**
      * RtspConverter 线程集合
      * @description 在 `this.outputDir` 目录下, 每创建一个 `RtspConverter` 实例就会创建一个输出目录, 目录名以数组 `key` 作为名称
      */
@@ -121,6 +126,8 @@ export class RtspConverter extends EventEmitter {
     static findProcessIndex(rc: RtspConverter): number {
         return RtspConverter.processList.findIndex(p => p === rc)
     }
+    static videoEncoderRegexp: RegExp = /\sVideo:\s([\d\w]+)\s/
+    static audioEncoderRegexp: RegExp = /\sAudio:\s([\d\w]+)\s/
     constructor(
         /**
          * rtsp URL
@@ -340,5 +347,57 @@ export class RtspConverter extends EventEmitter {
             }
         }
         return params
+    }
+    /**
+     * 使用 `ffmpeg` 获取视频编码格式
+     * @description 通过 `ffmpeg -i 'rtsp://xxxx'` 的 `stdout` 中获取视频信息
+     */
+    getVideoEncoder(url: string, useCache: boolean = true) {
+        if (RtspConverter.videoMetaInfos[url]) return RtspConverter.videoMetaInfos[url]
+        return new Promise((resolve, reject) => {
+            // output such as:
+            //      ...
+            //      Stream #0:0: Audio: aac (LC), 12000 Hz, stereo, fltp
+            //      Stream #0:1: Video: h264 (Constrained Baseline), yuv420p(progressive), 240x160, 24 fps, 24 tbr, 90k tbn, 48 tbc
+            //      ...
+            let ffmpegRawOutput = ''
+            let metaInfo: VideoMetaInfo
+            this.getVideoEncoderProcess = child_process.spawn(this.ffmpegPath, ['-i', url])
+            this.getVideoEncoderProcess.on('error', err => {
+                Logger.debug(`ffmpeg get video encoder process event <error>:\n\tcode: ${err}`, 'process event')
+                reject(err)
+            })
+            this.getVideoEncoderProcess.on('exit', (code, signal) => {
+                Logger.debug(`ffmpeg get video encoder process event <exit>:\n\tcode: ${code}\n\tsignal: ${signal}`, 'process event')
+                RtspConverter.videoMetaInfos[url] = metaInfo
+                resolve(metaInfo)
+            })
+            this.getVideoEncoderProcess.stderr?.on('data', data => {
+                Logger.debug(`ffmpeg process (get video encoder) event <stderr><data>:\n\tdata: ${data}`, 'process event<stderr>')
+                this.emit('getVideoEncoder-stderr', data)
+                // 从输出中获取编码格式
+                ffmpegRawOutput += data.toString('utf-8')
+                metaInfo = this._getVideoInfoByOutput(ffmpegRawOutput)
+            })
+        })
+    }
+    /**
+     * 从 `ffmpeg -i rtsp://xxxxx` 的输出信息中获取 `VideoMetaInfo`
+     * @param data string
+     */
+    private _getVideoInfoByOutput(data: string): VideoMetaInfo {
+        const videoMetaInfo: VideoMetaInfo = {
+            videoEncoder: '',
+            audioEncoder: '',
+        }
+        const videoMatches = data.match(RtspConverter.videoEncoderRegexp)
+        const audioMatches = data.match(RtspConverter.audioEncoderRegexp)
+        if (Array.isArray(videoMatches) && videoMatches[1]) {
+            videoMetaInfo.videoEncoder = videoMatches[1]
+        }
+        if (Array.isArray(audioMatches) && audioMatches[1]) {
+            videoMetaInfo.audioEncoder = audioMatches[1]
+        }
+        return videoMetaInfo
     }
 }

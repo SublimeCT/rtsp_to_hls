@@ -1,6 +1,7 @@
 /// <reference types="node" />
 import child_process from 'child_process';
 import { EventEmitter } from 'events';
+import { VideoMetaInfo } from './config';
 /**
  * rtsp -> hls 转码程序
  * @example
@@ -35,6 +36,7 @@ export declare class RtspConverter extends EventEmitter {
     readonly encoders?: "libx264" | "NVENC" | "libx265" | "libvpx" | "libaom" | undefined;
     process?: child_process.ChildProcess;
     printscreenProcess?: child_process.ChildProcess;
+    getVideoEncoderProcess?: child_process.ChildProcess;
     execOptions: child_process.ExecOptions;
     execScreenOptions: child_process.ExecOptions;
     /**
@@ -96,6 +98,12 @@ export declare class RtspConverter extends EventEmitter {
         [platform in NodeJS.Platform]?: string;
     };
     /**
+     * 解析的视频元信息
+     */
+    static videoMetaInfos: {
+        [url: string]: VideoMetaInfo;
+    };
+    /**
      * RtspConverter 线程集合
      * @description 在 `this.outputDir` 目录下, 每创建一个 `RtspConverter` 实例就会创建一个输出目录, 目录名以数组 `key` 作为名称
      */
@@ -105,6 +113,8 @@ export declare class RtspConverter extends EventEmitter {
      * @param rc RtspConverter 实例
      */
     static findProcessIndex(rc: RtspConverter): number;
+    static videoEncoderRegexp: RegExp;
+    static audioEncoderRegexp: RegExp;
     constructor(
     /**
      * rtsp URL
@@ -148,4 +158,14 @@ export declare class RtspConverter extends EventEmitter {
     beforeRun(): Promise<void>;
     getCommand(): string[];
     getExecParams(): string[];
+    /**
+     * 使用 `ffmpeg` 获取视频编码格式
+     * @description 通过 `ffmpeg -i 'rtsp://xxxx'` 的 `stdout` 中获取视频信息
+     */
+    getVideoEncoder(url: string, useCache?: boolean): VideoMetaInfo | Promise<unknown>;
+    /**
+     * 从 `ffmpeg -i rtsp://xxxxx` 的输出信息中获取 `VideoMetaInfo`
+     * @param data string
+     */
+    private _getVideoInfoByOutput;
 }

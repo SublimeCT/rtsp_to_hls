@@ -8,3 +8,10 @@ export declare class ConfigOptions {
  * @refer http://www.ruanyifeng.com/blog/2020/01/ffmpeg.html
  */
 export declare type Encoders = 'libx264' | 'NVENC' | 'libx265' | 'libvpx' | 'libaom';
+/**
+ * 视频元信息
+ */
+export interface VideoMetaInfo {
+    videoEncoder?: Encoders | string;
+    audioEncoder?: Encoders | string;
+}

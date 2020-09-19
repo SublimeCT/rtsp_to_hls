@@ -360,6 +360,60 @@ let RtspConverter = /** @class */ (() => {
             }
             return params;
         }
+        /**
+         * 使用 `ffmpeg` 获取视频编码格式
+         * @description 通过 `ffmpeg -i 'rtsp://xxxx'` 的 `stdout` 中获取视频信息
+         */
+        getVideoEncoder(url, useCache = true) {
+            if (RtspConverter.videoMetaInfos[url])
+                return RtspConverter.videoMetaInfos[url];
+            return new Promise((resolve, reject) => {
+                var _a;
+                // output such as:
+                //      ...
+                //      Stream #0:0: Audio: aac (LC), 12000 Hz, stereo, fltp
+                //      Stream #0:1: Video: h264 (Constrained Baseline), yuv420p(progressive), 240x160, 24 fps, 24 tbr, 90k tbn, 48 tbc
+                //      ...
+                let ffmpegRawOutput = '';
+                let metaInfo;
+                this.getVideoEncoderProcess = child_process_1.default.spawn(this.ffmpegPath, ['-i', url]);
+                this.getVideoEncoderProcess.on('error', err => {
+                    Logger_1.Logger.debug(`ffmpeg get video encoder process event <error>:\n\tcode: ${err}`, 'process event');
+                    reject(err);
+                });
+                this.getVideoEncoderProcess.on('exit', (code, signal) => {
+                    Logger_1.Logger.debug(`ffmpeg get video encoder process event <exit>:\n\tcode: ${code}\n\tsignal: ${signal}`, 'process event');
+                    RtspConverter.videoMetaInfos[url] = metaInfo;
+                    resolve(metaInfo);
+                });
+                (_a = this.getVideoEncoderProcess.stderr) === null || _a === void 0 ? void 0 : _a.on('data', data => {
+                    Logger_1.Logger.debug(`ffmpeg process (get video encoder) event <stderr><data>:\n\tdata: ${data}`, 'process event<stderr>');
+                    this.emit('getVideoEncoder-stderr', data);
+                    // 从输出中获取编码格式
+                    ffmpegRawOutput += data.toString('utf-8');
+                    metaInfo = this._getVideoInfoByOutput(ffmpegRawOutput);
+                });
+            });
+        }
+        /**
+         * 从 `ffmpeg -i rtsp://xxxxx` 的输出信息中获取 `VideoMetaInfo`
+         * @param data string
+         */
+        _getVideoInfoByOutput(data) {
+            const videoMetaInfo = {
+                videoEncoder: '',
+                audioEncoder: '',
+            };
+            const videoMatches = data.match(RtspConverter.videoEncoderRegexp);
+            const audioMatches = data.match(RtspConverter.audioEncoderRegexp);
+            if (Array.isArray(videoMatches) && videoMatches[1]) {
+                videoMetaInfo.videoEncoder = videoMatches[1];
+            }
+            if (Array.isArray(audioMatches) && audioMatches[1]) {
+                videoMetaInfo.audioEncoder = audioMatches[1];
+            }
+            return videoMetaInfo;
+        }
     }
     /**
      * 不同平台下的 ffmpeg 二进制包下载地址
@@ -369,10 +423,16 @@ let RtspConverter = /** @class */ (() => {
         darwin: 'https://ffmpeg.zeranoe.com/builds/macos64/static/ffmpeg-4.3.1-macos64-static.zip'
     };
     /**
+     * 解析的视频元信息
+     */
+    RtspConverter.videoMetaInfos = {};
+    /**
      * RtspConverter 线程集合
      * @description 在 `this.outputDir` 目录下, 每创建一个 `RtspConverter` 实例就会创建一个输出目录, 目录名以数组 `key` 作为名称
      */
     RtspConverter.processList = [];
+    RtspConverter.videoEncoderRegexp = /\sVideo:\s([\d\w]+)\s/;
+    RtspConverter.audioEncoderRegexp = /\sAudio:\s([\d\w]+)\s/;
     return RtspConverter;
 })();
 exports.RtspConverter = RtspConverter;

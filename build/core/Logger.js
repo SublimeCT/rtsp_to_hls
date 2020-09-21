@@ -19,6 +19,7 @@ var LoggerCode;
     LoggerCode["HANDLE_FILE_FAILED"] = "HANDLE_FILE_FAILED";
     LoggerCode["DOWNLOAD_FAILED"] = "DOWNLOAD_FAILED";
     LoggerCode["EXEC_FAILED"] = "EXEC_FAILED";
+    LoggerCode["KILL_PROCESS_FAILED"] = "KILL_PROCESS_FAILED";
 })(LoggerCode = exports.LoggerCode || (exports.LoggerCode = {}));
 class Logger {
     static log(options) {

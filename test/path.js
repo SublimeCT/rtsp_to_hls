@@ -14,6 +14,7 @@ describe('2. 测试执行场景', function () {
             expect(rc.index).to.equal(0)
             expect(rc.savePath).equal(savePath)
             expect(rc.saveM3u8Path).equal(saveM3u8Path)
+            rc.kill()
         })
     })
 })

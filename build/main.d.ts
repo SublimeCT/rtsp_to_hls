@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import child_process from 'child_process';
 import { EventEmitter } from 'events';
-import { VideoMetaInfo } from './config';
+import { Encoders, LaunchState, VideoMetaInfo } from './config';
 /**
  * rtsp -> hls 转码程序
  * @example
@@ -33,7 +33,7 @@ export declare class RtspConverter extends EventEmitter {
      * @description 若传空则使用 `-c copy` 即不进行再编码(默认)
      * @description 应用场景: 视频源是 `h265`, 需要转为 `h264` 提供给浏览器播放
      */
-    readonly encoders?: "libx264" | "NVENC" | "libx265" | "libvpx" | "libaom" | undefined;
+    encoder?: "libx264" | "NVENC" | "libx265" | "libvpx" | "libaom" | undefined;
     process?: child_process.ChildProcess;
     printscreenProcess?: child_process.ChildProcess;
     getVideoEncoderProcess?: child_process.ChildProcess;
@@ -55,7 +55,7 @@ export declare class RtspConverter extends EventEmitter {
      * @refer https://www.jianshu.com/p/6f09f95f992b
      */
     execParams: {
-        [paramKey: string]: string | string[];
+        [paramKey: string]: null | string | string[];
     };
     /**
      * 获取视频流快照时的 ffmpeg 参数
@@ -75,6 +75,10 @@ export declare class RtspConverter extends EventEmitter {
      * 执行结束时间
      */
     endTime: number;
+    /**
+     * 执行状态
+     */
+    state: LaunchState;
     /**
      * 当前实例在 `RtspConverter.processList` 中的索引
      */
@@ -136,7 +140,12 @@ export declare class RtspConverter extends EventEmitter {
      * @description 若传空则使用 `-c copy` 即不进行再编码(默认)
      * @description 应用场景: 视频源是 `h265`, 需要转为 `h264` 提供给浏览器播放
      */
-    encoders?: "libx264" | "NVENC" | "libx265" | "libvpx" | "libaom" | undefined);
+    encoder?: "libx264" | "NVENC" | "libx265" | "libvpx" | "libaom" | undefined);
+    /**
+     * 设置编码格式
+     * @param encoder 编码格式
+     */
+    setEncoder(encoder?: Encoders): void;
     /**
      * 检测传入的路径是否正确(仅检测该文件的可访问性)
      * @description 检测文件无需传入 checkParams, 检测命令时需要传入 `checkParams`
@@ -155,6 +164,10 @@ export declare class RtspConverter extends EventEmitter {
      * @description ⚠️ 当不需要显示视频时应该及时 kill ffmpeg 进程
      */
     kill(): boolean;
+    /**
+     * kill all ffmpeg process
+     */
+    static killAll(): void;
     beforeRun(): Promise<void>;
     getCommand(): string[];
     getExecParams(): string[];

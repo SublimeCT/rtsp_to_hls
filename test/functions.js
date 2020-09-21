@@ -35,6 +35,7 @@ describe('4. 功能测试', function () {
             const startTime = Date.now()
             const screenshotPath = await rc.printscreen()
             const endTime = Date.now()
+            rc.kill()
             expect(endTime - startTime).to.lt(7000)
             return new Promise(resolve => {
                 fs.access(screenshotPath, err => {

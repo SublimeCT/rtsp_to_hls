@@ -2,9 +2,9 @@ import child_process from 'child_process'
 import { Logger, LoggerCode } from './core/Logger'
 import fs from 'fs'
 import fse from 'fs-extra'
-import path, { resolve } from 'path'
+import path from 'path'
 import { EventEmitter } from 'events'
-import { ConfigOptions, Encoders, VideoMetaInfo } from './config'
+import { ConfigOptions, Encoders, LaunchState, VideoMetaInfo } from './config'
 
 /**
  * rtsp -> hls 转码程序
@@ -44,21 +44,22 @@ export class RtspConverter extends EventEmitter {
      * @refer https://www.jianshu.com/p/98ff1c49f232
      * @refer https://www.jianshu.com/p/6f09f95f992b
      */
-    execParams: { [paramKey: string]: string | string[] } = {
+    execParams: { [paramKey: string]: null | string | string[] } = {
         '-hide_banner': '', // 好像没用 ...
         '-fflags': 'flush_packets', // 立即将 packets 数据刷新入文件中, #refer https://www.jianshu.com/p/6f09f95f992b
         '-vcodec': '',
         '-flags': '',
-        '-hls_time': '1', // 每片 1s #refer https://www.jianshu.com/p/98ff1c49f232
+        '-hls_time': '3', // 每片 1s #refer https://www.jianshu.com/p/98ff1c49f232
         '-hls_wrap': '20', // 设置刷新回滚参数, 当TS分片序号等于 20 时回滚 #refer https://www.jianshu.com/p/98ff1c49f232
         '-hls_flags': [
             '-hls_flags', 'delete_segments', // 只保留设置的切片个数, 删除其他早期的切片 #refer https://www.jianshu.com/p/98ff1c49f232
-            '-hls_flags', 'round_durations' // 可以实现切片信息的duration时长为整形 #refer https://www.jianshu.com/p/98ff1c49f232
+            '-hls_flags', 'round_durations', // 可以实现切片信息的duration时长为整形 #refer https://www.jianshu.com/p/98ff1c49f232
+            // '-hls_flags', 'split_by_time',
         ],
         '-hls_list_size': '10', // m3u8 ts list size #refer https://www.jianshu.com/p/98ff1c49f232
-        // '-c:v': 'libx264', // 将视频流编码为 h.264 格式(在获取实际执行的参数时如果指定了 `this.encoder`, 则会使用该参数, 否则会删除该参数) #refer https://www.jianshu.com/p/98ff1c49f232
+        '-c:v': null, // 将视频流编码为 h.264(libx264) 格式(在获取实际执行的参数时如果指定了 `this.encoder`, 则会使用该参数, 否则会删除该参数) #refer https://www.jianshu.com/p/98ff1c49f232
         // '-bsf:v': 'h264_mp4toannexb', // 转换为常见于实时传输流的H.264 AnnexB标准的编码
-        // '-c': 'copy', // 直接复制(在获取实际执行的参数时如果指定了 `this.encoder`, 则会删除该参数), 不经过重新编码 这样比较快? #refer http://www.ruanyifeng.com/blog/2020/01/ffmpeg.html
+        '-c': null, // 直接复制(`copy` 在获取实际执行的参数时如果指定了 `this.encoder`, 则会删除该参数), 不经过重新编码 这样比较快? #refer http://www.ruanyifeng.com/blog/2020/01/ffmpeg.html
         '-y': '',
     }
     /**
@@ -80,6 +81,10 @@ export class RtspConverter extends EventEmitter {
      */
     endTime: number = 0
     /**
+     * 执行状态
+     */
+    state: LaunchState = 'idle'
+    /**
      * 当前实例在 `RtspConverter.processList` 中的索引
      */
     get index(): number {
@@ -89,6 +94,7 @@ export class RtspConverter extends EventEmitter {
      * 当前 rtsp -> hls 视频流文件保存路径
      */
     get savePath(): string {
+        if (this.index === -1) throw new Error('current ffmpeg process maybe killed')
         return path.join(this.outputDir, this.index.toString())
     }
     /**
@@ -149,17 +155,26 @@ export class RtspConverter extends EventEmitter {
          * @description 若传空则使用 `-c copy` 即不进行再编码(默认)
          * @description 应用场景: 视频源是 `h265`, 需要转为 `h264` 提供给浏览器播放
          */
-        readonly encoders?: Encoders,
+        public encoder?: Encoders,
     ) {
         super()
         if (!RtspConverter.checkPath(ffmpegPath, '-version')) Logger.error('ffmpeg command path invalid', LoggerCode.EXEC_PATH_WRONG)
         if (!RtspConverter.checkPath(outputDir)) Logger.error('output path invalid', LoggerCode.PATH_WRONG)
-        // 设置编码格式
-        if (this.encoders) {
-            this.execParams['-c:v'] = this.encoders
+        this.setEncoder(encoder)
+    }
+    /**
+     * 设置编码格式
+     * @param encoder 编码格式
+     */
+    setEncoder(encoder?: Encoders) {
+        if (encoder) {
+            this.execParams['-c:v'] = encoder
+            this.execParams['-c'] = null
         } else {
             this.execParams['-c'] = 'copy'
+            this.execParams['-c:v'] = null
         }
+        console.log(`-c -> ${this.execParams['-c']}; -c:v -> ${this.execParams['-c:v']}`)
     }
     // /**
     //  * 下载 ffmpeg 二进制包到本地
@@ -189,21 +204,24 @@ export class RtspConverter extends EventEmitter {
         return isValid
     }
     async download() {
+        if (this.state === 'killed') return false
         await this.beforeRun()
         const command = this.getCommand()
         return new Promise(resolve => {
+            if (this.state === 'killed') resolve(false)
+            this.state = 'active'
             // 参考 http://nodejs.cn/api/child_process.html#child_process_child_process_spawn_command_args_options
             Logger.debug(`\ncommand: \n\t${this.ffmpegPath + ' ' + command.join(' ')}\n\texecOptions:\n\t${JSON.stringify(this.execOptions)}`)
             this.process = child_process.spawn(this.ffmpegPath, command, this.execOptions)
             this.startTime = Date.now() // 记录开始时间用于统计
             this.process.on('error', err => {
                 Logger.debug(`ffmpeg process event <error>:\n\tcode: ${err}`, 'process event')
-                resolve(this.saveM3u8Path)
+                resolve(this.index === -1 ? '' : this.saveM3u8Path)
                 this.emit('error', err)
             })
             this.process.on('exit', (code, signal) => {
                 Logger.debug(`ffmpeg process event <exit>:\n\tcode: ${code}\n\tsignal: ${signal}`, 'process event')
-                resolve(this.saveM3u8Path)
+                resolve(this.index === -1 ? '' : this.saveM3u8Path)
                 this.emit('exit', code, signal)
             })
             this.process.stderr?.on('data', data => {
@@ -261,9 +279,12 @@ export class RtspConverter extends EventEmitter {
     //     })
     // }
     async printscreen() {
+        if (this.state === 'killed') return false
         await this.beforeRun()
         const command = this.getPrintScreenCommand()
         return new Promise((resolve, reject) => {
+            if (this.state === 'killed') resolve(false)
+            this.state = 'active'
             // 参考 http://nodejs.cn/api/child_process.html#child_process_child_process_spawn_command_args_options
             Logger.debug(`\ncommand: \n\t${this.ffmpegPath + ' ' + command.join(' ')}\n\texecOptions:\n\t${JSON.stringify(this.execScreenOptions)}`)
             this.startTime = Date.now() // 记录开始时间用于统计
@@ -271,6 +292,7 @@ export class RtspConverter extends EventEmitter {
             this.printscreenProcess.on('error', err => {
                 Logger.debug(`ffmpeg process (printscreen) event <error>:\n\tcode: ${err}`, 'process event')
                 this.emit('printscreen error', err)
+                this.state = 'idle'
                 resolve(this.saveScreenshotPath)
             })
             this.printscreenProcess.on('exit', (code, signal) => {
@@ -278,6 +300,7 @@ export class RtspConverter extends EventEmitter {
                 this.endTime = Date.now()
                 Logger.info(`generated printscreen file, ${this.endTime - this.startTime}ms`, 'timer')
                 this.emit('printscreen exit', code, signal)
+                this.state = 'idle'
                 resolve(this.saveScreenshotPath)
             })
             this.printscreenProcess.stderr?.on('data', data => {
@@ -318,9 +341,31 @@ export class RtspConverter extends EventEmitter {
      * @description ⚠️ 当不需要显示视频时应该及时 kill ffmpeg 进程
      */
     kill(): boolean {
+        this.state = 'killed'
+        const index = RtspConverter.processList.findIndex(p => p === this)
+        if (index !== -1) {
+            RtspConverter.processList.splice(index, 1)
+        }
         if (!this.process || this.process.killed) return false
         this.process.kill('SIGHUP')
         return true
+    }
+    /**
+     * kill all ffmpeg process
+     */
+    static killAll() {
+        for (let processIndex = RtspConverter.processList.length; processIndex--;) {
+            const p = RtspConverter.processList[processIndex]
+            try {
+                p.kill()
+            } catch(err) {
+                Logger.error(`ffmpeg process list event <kill process failed>:\n\terror message: ${err}`, LoggerCode.KILL_PROCESS_FAILED, false)
+            }
+        }
+        // remove killed process
+        RtspConverter.processList = RtspConverter.processList.filter(p => p.state !== 'killed')
+        // // remove all process
+        // RtspConverter.processList = []
     }
     async beforeRun() {
         // 将当前实例存入 process list
@@ -339,11 +384,12 @@ export class RtspConverter extends EventEmitter {
     getExecParams(): string[] {
         let params = []
         for (const key in this.execParams) {
+            if (this.execParams[key] === null) continue
             if (Array.isArray(this.execParams[key])) {
-                params.push(...this.execParams[key])
+                params.push(...(<Array<string>>this.execParams[key]))
             } else {
                 params.push(key)
-                if (this.execParams[key]) params.push(this.execParams[key].toString())
+                if (this.execParams[key]) params.push((<string>this.execParams[key]).toString())
             }
         }
         return params

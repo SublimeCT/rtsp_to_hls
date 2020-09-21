@@ -53,12 +53,12 @@ let RtspConverter = /** @class */ (() => {
          * @description 若传空则使用 `-c copy` 即不进行再编码(默认)
          * @description 应用场景: 视频源是 `h265`, 需要转为 `h264` 提供给浏览器播放
          */
-        encoders) {
+        encoder) {
             super();
             this.url = url;
             this.ffmpegPath = ffmpegPath;
             this.outputDir = outputDir;
-            this.encoders = encoders;
+            this.encoder = encoder;
             this.execOptions = {
                 timeout: 10000,
                 maxBuffer: 1024 * 1024 * 1024,
@@ -88,16 +88,16 @@ let RtspConverter = /** @class */ (() => {
                 '-fflags': 'flush_packets',
                 '-vcodec': '',
                 '-flags': '',
-                '-hls_time': '1',
+                '-hls_time': '3',
                 '-hls_wrap': '20',
                 '-hls_flags': [
                     '-hls_flags', 'delete_segments',
-                    '-hls_flags', 'round_durations' // 可以实现切片信息的duration时长为整形 #refer https://www.jianshu.com/p/98ff1c49f232
+                    '-hls_flags', 'round_durations',
                 ],
                 '-hls_list_size': '10',
-                // '-c:v': 'libx264', // 将视频流编码为 h.264 格式(在获取实际执行的参数时如果指定了 `this.encoder`, 则会使用该参数, 否则会删除该参数) #refer https://www.jianshu.com/p/98ff1c49f232
+                '-c:v': null,
                 // '-bsf:v': 'h264_mp4toannexb', // 转换为常见于实时传输流的H.264 AnnexB标准的编码
-                // '-c': 'copy', // 直接复制(在获取实际执行的参数时如果指定了 `this.encoder`, 则会删除该参数), 不经过重新编码 这样比较快? #refer http://www.ruanyifeng.com/blog/2020/01/ffmpeg.html
+                '-c': null,
                 '-y': '',
             };
             /**
@@ -118,17 +118,15 @@ let RtspConverter = /** @class */ (() => {
              * 执行结束时间
              */
             this.endTime = 0;
+            /**
+             * 执行状态
+             */
+            this.state = 'idle';
             if (!RtspConverter.checkPath(ffmpegPath, '-version'))
                 Logger_1.Logger.error('ffmpeg command path invalid', Logger_1.LoggerCode.EXEC_PATH_WRONG);
             if (!RtspConverter.checkPath(outputDir))
                 Logger_1.Logger.error('output path invalid', Logger_1.LoggerCode.PATH_WRONG);
-            // 设置编码格式
-            if (this.encoders) {
-                this.execParams['-c:v'] = this.encoders;
-            }
-            else {
-                this.execParams['-c'] = 'copy';
-            }
+            this.setEncoder(encoder);
         }
         /**
          * 当前实例在 `RtspConverter.processList` 中的索引
@@ -140,6 +138,8 @@ let RtspConverter = /** @class */ (() => {
          * 当前 rtsp -> hls 视频流文件保存路径
          */
         get savePath() {
+            if (this.index === -1)
+                throw new Error('current ffmpeg process maybe killed');
             return path_1.default.join(this.outputDir, this.index.toString());
         }
         /**
@@ -160,6 +160,21 @@ let RtspConverter = /** @class */ (() => {
          */
         static findProcessIndex(rc) {
             return RtspConverter.processList.findIndex(p => p === rc);
+        }
+        /**
+         * 设置编码格式
+         * @param encoder 编码格式
+         */
+        setEncoder(encoder) {
+            if (encoder) {
+                this.execParams['-c:v'] = encoder;
+                this.execParams['-c'] = null;
+            }
+            else {
+                this.execParams['-c'] = 'copy';
+                this.execParams['-c:v'] = null;
+            }
+            console.log(`-c -> ${this.execParams['-c']}; -c:v -> ${this.execParams['-c:v']}`);
         }
         // /**
         //  * 下载 ffmpeg 二进制包到本地
@@ -192,22 +207,27 @@ let RtspConverter = /** @class */ (() => {
         }
         download() {
             return __awaiter(this, void 0, void 0, function* () {
+                if (this.state === 'killed')
+                    return false;
                 yield this.beforeRun();
                 const command = this.getCommand();
                 return new Promise(resolve => {
                     var _a, _b;
+                    if (this.state === 'killed')
+                        resolve(false);
+                    this.state = 'active';
                     // 参考 http://nodejs.cn/api/child_process.html#child_process_child_process_spawn_command_args_options
                     Logger_1.Logger.debug(`\ncommand: \n\t${this.ffmpegPath + ' ' + command.join(' ')}\n\texecOptions:\n\t${JSON.stringify(this.execOptions)}`);
                     this.process = child_process_1.default.spawn(this.ffmpegPath, command, this.execOptions);
                     this.startTime = Date.now(); // 记录开始时间用于统计
                     this.process.on('error', err => {
                         Logger_1.Logger.debug(`ffmpeg process event <error>:\n\tcode: ${err}`, 'process event');
-                        resolve(this.saveM3u8Path);
+                        resolve(this.index === -1 ? '' : this.saveM3u8Path);
                         this.emit('error', err);
                     });
                     this.process.on('exit', (code, signal) => {
                         Logger_1.Logger.debug(`ffmpeg process event <exit>:\n\tcode: ${code}\n\tsignal: ${signal}`, 'process event');
-                        resolve(this.saveM3u8Path);
+                        resolve(this.index === -1 ? '' : this.saveM3u8Path);
                         this.emit('exit', code, signal);
                     });
                     (_a = this.process.stderr) === null || _a === void 0 ? void 0 : _a.on('data', data => {
@@ -266,10 +286,15 @@ let RtspConverter = /** @class */ (() => {
         // }
         printscreen() {
             return __awaiter(this, void 0, void 0, function* () {
+                if (this.state === 'killed')
+                    return false;
                 yield this.beforeRun();
                 const command = this.getPrintScreenCommand();
                 return new Promise((resolve, reject) => {
                     var _a, _b;
+                    if (this.state === 'killed')
+                        resolve(false);
+                    this.state = 'active';
                     // 参考 http://nodejs.cn/api/child_process.html#child_process_child_process_spawn_command_args_options
                     Logger_1.Logger.debug(`\ncommand: \n\t${this.ffmpegPath + ' ' + command.join(' ')}\n\texecOptions:\n\t${JSON.stringify(this.execScreenOptions)}`);
                     this.startTime = Date.now(); // 记录开始时间用于统计
@@ -277,6 +302,7 @@ let RtspConverter = /** @class */ (() => {
                     this.printscreenProcess.on('error', err => {
                         Logger_1.Logger.debug(`ffmpeg process (printscreen) event <error>:\n\tcode: ${err}`, 'process event');
                         this.emit('printscreen error', err);
+                        this.state = 'idle';
                         resolve(this.saveScreenshotPath);
                     });
                     this.printscreenProcess.on('exit', (code, signal) => {
@@ -284,6 +310,7 @@ let RtspConverter = /** @class */ (() => {
                         this.endTime = Date.now();
                         Logger_1.Logger.info(`generated printscreen file, ${this.endTime - this.startTime}ms`, 'timer');
                         this.emit('printscreen exit', code, signal);
+                        this.state = 'idle';
                         resolve(this.saveScreenshotPath);
                     });
                     (_a = this.printscreenProcess.stderr) === null || _a === void 0 ? void 0 : _a.on('data', data => {
@@ -325,10 +352,33 @@ let RtspConverter = /** @class */ (() => {
          * @description ⚠️ 当不需要显示视频时应该及时 kill ffmpeg 进程
          */
         kill() {
+            this.state = 'killed';
+            const index = RtspConverter.processList.findIndex(p => p === this);
+            if (index !== -1) {
+                RtspConverter.processList.splice(index, 1);
+            }
             if (!this.process || this.process.killed)
                 return false;
             this.process.kill('SIGHUP');
             return true;
+        }
+        /**
+         * kill all ffmpeg process
+         */
+        static killAll() {
+            for (let processIndex = RtspConverter.processList.length; processIndex--;) {
+                const p = RtspConverter.processList[processIndex];
+                try {
+                    p.kill();
+                }
+                catch (err) {
+                    Logger_1.Logger.error(`ffmpeg process list event <kill process failed>:\n\terror message: ${err}`, Logger_1.LoggerCode.KILL_PROCESS_FAILED, false);
+                }
+            }
+            // remove killed process
+            RtspConverter.processList = RtspConverter.processList.filter(p => p.state !== 'killed');
+            // // remove all process
+            // RtspConverter.processList = []
         }
         beforeRun() {
             return __awaiter(this, void 0, void 0, function* () {
@@ -349,6 +399,8 @@ let RtspConverter = /** @class */ (() => {
         getExecParams() {
             let params = [];
             for (const key in this.execParams) {
+                if (this.execParams[key] === null)
+                    continue;
                 if (Array.isArray(this.execParams[key])) {
                     params.push(...this.execParams[key]);
                 }

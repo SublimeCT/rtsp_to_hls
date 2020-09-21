@@ -1,12 +1,13 @@
 {
   "name": "rtsp_to_hls",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "main": "./build/main.js",
   "author": "SublimeCT",
   "license": "MIT",
   "scripts": {
     "test": "mocha test/index.js --timeout 15000 --reporter mochawesome",
-    "test:functions": "mocha test/functions.js --timeout 15000 --reporter mochawesome"
+    "test:functions": "mocha test/functions.js --timeout 15000 --reporter mochawesome",
+    "test:kill": "mocha test/kill.js --timeout 15000 --reporter mochawesome"
   },
   "devDependencies": {
     "@types/fs-extra": "^9.0.1",

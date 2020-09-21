@@ -15,3 +15,7 @@ export interface VideoMetaInfo {
     videoEncoder?: Encoders | string;
     audioEncoder?: Encoders | string;
 }
+/**
+ * RtspConverter 的执行状态
+ */
+export declare type LaunchState = 'active' | 'killed' | 'idle';

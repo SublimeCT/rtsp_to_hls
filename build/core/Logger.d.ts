@@ -12,7 +12,8 @@ export declare enum LoggerCode {
     PATH_WRONG = "PATH_WRONG",
     HANDLE_FILE_FAILED = "HANDLE_FILE_FAILED",
     DOWNLOAD_FAILED = "DOWNLOAD_FAILED",
-    EXEC_FAILED = "EXEC_FAILED"
+    EXEC_FAILED = "EXEC_FAILED",
+    KILL_PROCESS_FAILED = "KILL_PROCESS_FAILED"
 }
 export interface LoggerOptions {
     tag: LoggerTag;

@@ -21,3 +21,8 @@ export interface VideoMetaInfo {
      */
     // ffmpegRawOutput: string,
 }
+
+/**
+ * RtspConverter 的执行状态
+ */
+export type LaunchState = 'active' | 'killed' | 'idle'

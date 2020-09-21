@@ -20,14 +20,27 @@ rc.on('existsM3u8', () => {
     this.videoSrc = `file://${rc.saveM3u8Path}`
 })
 
+// 设置视频编码
+// rc.setEncoder('libx264')
+
 // 开始生成 ts 文件
 rc.download()
 // 开始截图
 // rc.printscreen()
 
+// get video info(video codec / audio codec)
+rc.getVideoEncoder()
+
 // 在退出播放时必须要停掉 ffmpeg 进程, 否则 ...
 rc.kill()
+
+// all(active) process
+RtspConverter.processList
+
+// kill all
+RtspConverter.killAll()
 ```
+
 
 ## test
 先修改 `test/config.js` 中的参数

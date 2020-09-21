@@ -30,9 +30,9 @@ export class RtspConverter extends EventEmitter {
         windowsHide: true,
     }
     /**
-     * 当前视频
+     * 当前进程是否已经生成 m3u8 文件
      */
-    isActive: boolean = true
+    isExistsM3u8File: boolean = true
     /**
      * ffmpeg 命令的执行参数, 参数很复杂, `hls` 部分参数可参考 `ffmpeg -h muxer=hls`
      * @description 不包含 `ffmpeg -i 'rtsp://...'` 部分, 也不包含最终的 output 文件
@@ -248,6 +248,7 @@ export class RtspConverter extends EventEmitter {
     emitSavedEvent(data: string) {
         const existsM3u8File = this.m3u8FileExistsInStdout(data)
         if (existsM3u8File) {
+            this.isExistsM3u8File = true
             this.endTime = Date.now()
             Logger.info(`exists m3u8 file, ${this.endTime - this.startTime}ms`, 'timer')
             this.emit('existsM3u8')
@@ -342,6 +343,7 @@ export class RtspConverter extends EventEmitter {
      */
     kill(): boolean {
         this.state = 'killed'
+        this.isExistsM3u8File = false
         const index = RtspConverter.processList.findIndex(p => p === this)
         if (index !== -1) {
             RtspConverter.processList.splice(index, 1)

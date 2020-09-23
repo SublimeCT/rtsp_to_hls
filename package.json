@@ -1,6 +1,6 @@
 {
   "name": "rtsp_to_hls",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "main": "./build/main.js",
   "author": "SublimeCT",
   "license": "MIT",

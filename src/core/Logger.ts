@@ -28,7 +28,9 @@ export interface LoggerOptions {
 }
 
 export class Logger {
+    static enable: boolean = true
     static log(options: LoggerOptions) {
+        if (!Logger.enable) return
         const msg = `${ConfigOptions.lOGGER_PREFIX} ${options.tag} ${options.category ? `[${options.category}]` : ''} ${options.code ? `<Code: ${options.code}>` : ''} ${options.message}`
         console.log(msg)
         // 当处于测试环境时, process.exit() 会导致线程终止, 无法执行后续的断言, 所以改为抛出异常

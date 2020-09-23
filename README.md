@@ -12,6 +12,7 @@ const rc = new RtspConverter(url, ffmpegPath, outputDir, encoder)
 // 监听事件
 rc.on('error', handleRCError)
 rc.on('stderr', handleRCError)
+rc.on('stdout', handleRCOutput)
 rc.on('connected', handleRCConnected)
 rc.on('existsM3u8', () => {
     // 此时已经生成了 m3u8 文件
@@ -22,6 +23,10 @@ rc.on('existsM3u8', () => {
 
 // 设置视频编码
 // rc.setEncoder('libx264')
+
+// 设置是否禁用 log
+// rc.enableLog()
+// rc.disableLog()
 
 // 开始生成 ts 文件
 rc.download()

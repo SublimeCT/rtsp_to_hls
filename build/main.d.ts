@@ -40,9 +40,9 @@ export declare class RtspConverter extends EventEmitter {
     execOptions: child_process.ExecOptions;
     execScreenOptions: child_process.ExecOptions;
     /**
-     * 当前视频
+     * 当前进程是否已经生成 m3u8 文件
      */
-    isActive: boolean;
+    isExistsM3u8File: boolean;
     /**
      * ffmpeg 命令的执行参数, 参数很复杂, `hls` 部分参数可参考 `ffmpeg -h muxer=hls`
      * @description 不包含 `ffmpeg -i 'rtsp://...'` 部分, 也不包含最终的 output 文件
@@ -113,6 +113,10 @@ export declare class RtspConverter extends EventEmitter {
      */
     static processList: RtspConverter[];
     /**
+     * 已经生成 `index.m3u8` 文件的 RtspConverter 线程集合
+     */
+    static get existsM3u8Process(): RtspConverter[];
+    /**
      * 在 RtspConverter 线程集合中寻找当前实例的位置, 可作为目录名称
      * @param rc RtspConverter 实例
      */
@@ -146,6 +150,10 @@ export declare class RtspConverter extends EventEmitter {
      * @param encoder 编码格式
      */
     setEncoder(encoder?: Encoders): void;
+    static get logIsEnabled(): boolean;
+    static setLog(enable: boolean): void;
+    static enableLog(): void;
+    static disableLog(): void;
     /**
      * 检测传入的路径是否正确(仅检测该文件的可访问性)
      * @description 检测文件无需传入 checkParams, 检测命令时需要传入 `checkParams`

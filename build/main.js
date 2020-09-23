@@ -69,9 +69,9 @@ let RtspConverter = /** @class */ (() => {
                 windowsHide: true,
             };
             /**
-             * 当前视频
+             * 当前进程是否已经生成 m3u8 文件
              */
-            this.isActive = true;
+            this.isExistsM3u8File = true;
             /**
              * ffmpeg 命令的执行参数, 参数很复杂, `hls` 部分参数可参考 `ffmpeg -h muxer=hls`
              * @description 不包含 `ffmpeg -i 'rtsp://...'` 部分, 也不包含最终的 output 文件
@@ -155,6 +155,12 @@ let RtspConverter = /** @class */ (() => {
             return path_1.default.join(this.savePath, config_1.ConfigOptions.SCREENSHOT_NAME);
         }
         /**
+         * 已经生成 `index.m3u8` 文件的 RtspConverter 线程集合
+         */
+        static get existsM3u8Process() {
+            return RtspConverter.processList.filter(rc => rc.isExistsM3u8File);
+        }
+        /**
          * 在 RtspConverter 线程集合中寻找当前实例的位置, 可作为目录名称
          * @param rc RtspConverter 实例
          */
@@ -175,6 +181,18 @@ let RtspConverter = /** @class */ (() => {
                 this.execParams['-c:v'] = null;
             }
             console.log(`-c -> ${this.execParams['-c']}; -c:v -> ${this.execParams['-c:v']}`);
+        }
+        static get logIsEnabled() {
+            return Logger_1.Logger.enable;
+        }
+        static setLog(enable) {
+            Logger_1.Logger.enable = enable;
+        }
+        static enableLog() {
+            RtspConverter.setLog(true);
+        }
+        static disableLog() {
+            RtspConverter.setLog(false);
         }
         // /**
         //  * 下载 ffmpeg 二进制包到本地
@@ -255,6 +273,7 @@ let RtspConverter = /** @class */ (() => {
         emitSavedEvent(data) {
             const existsM3u8File = this.m3u8FileExistsInStdout(data);
             if (existsM3u8File) {
+                this.isExistsM3u8File = true;
                 this.endTime = Date.now();
                 Logger_1.Logger.info(`exists m3u8 file, ${this.endTime - this.startTime}ms`, 'timer');
                 this.emit('existsM3u8');
@@ -353,6 +372,7 @@ let RtspConverter = /** @class */ (() => {
          */
         kill() {
             this.state = 'killed';
+            this.isExistsM3u8File = false;
             const index = RtspConverter.processList.findIndex(p => p === this);
             if (index !== -1) {
                 RtspConverter.processList.splice(index, 1);

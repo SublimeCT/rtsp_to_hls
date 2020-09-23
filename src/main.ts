@@ -126,6 +126,12 @@ export class RtspConverter extends EventEmitter {
      */
     static processList: RtspConverter[] = []
     /**
+     * 已经生成 `index.m3u8` 文件的 RtspConverter 线程集合
+     */
+    static get existsM3u8Process(): RtspConverter[] {
+        return RtspConverter.processList.filter(rc => rc.isExistsM3u8File)
+    }
+    /**
      * 在 RtspConverter 线程集合中寻找当前实例的位置, 可作为目录名称
      * @param rc RtspConverter 实例
      */
@@ -175,6 +181,18 @@ export class RtspConverter extends EventEmitter {
             this.execParams['-c:v'] = null
         }
         console.log(`-c -> ${this.execParams['-c']}; -c:v -> ${this.execParams['-c:v']}`)
+    }
+    static get logIsEnabled(): boolean {
+        return Logger.enable
+    }
+    static setLog(enable: boolean) {
+        Logger.enable = enable
+    }
+    static enableLog() {
+        RtspConverter.setLog(true)
+    }
+    static disableLog() {
+        RtspConverter.setLog(false)
     }
     // /**
     //  * 下载 ffmpeg 二进制包到本地

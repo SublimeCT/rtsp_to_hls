@@ -23,6 +23,7 @@ export interface LoggerOptions {
     code?: LoggerCode;
 }
 export declare class Logger {
+    static enable: boolean;
     static log(options: LoggerOptions): void;
     static error(message: string, code: LoggerCode, exit?: boolean): void;
     static info(message: string, category?: string): void;
